@@ -1,0 +1,102 @@
+---
+title: "homework1"
+author: "Ivan Aguilar"
+date: '2022-05-03'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = 'C:\\Users\\ivano\\Desktop\\DSMMaster\\MLFin\\')
+rm(list=ls())
+
+library(tidyverse)
+library(xts)
+library(quantmod)
+library(TTR)
+library(lmtest)
+```
+
+```{r}
+data.env = readRDS('.\\HW1\\WorldMarkts99_20.RDS')
+
+names<-c("India", "Brazil","UK","Germany","USA","China-Shanghai",
+             "Spain","Indonesia","Mexico","Japan","Taiwan","VLIC","VIX")
+
+markets_codes = ls(data.env)[1:11]
+markets_names = names[1:11]
+volatilities_codes = ls(data.env)[12:13]
+volatilities_names = names[12:13]
+
+```
+
+```{r}
+markets = data.frame(matrix(ncol=2, nrow=11))
+colnames(markets) = c('name', 'code')
+markets$name = markets_names
+markets$code = markets_codes
+```
+
+```{r}
+markets_week = list()
+markets_month = list()
+periods = c('weekly','monthly')
+
+start_date="2017-07-01"
+end_date="2019-06-30"
+
+for (period in periods) {
+  for (row in 1:nrow(markets)) {
+    temp = xts()
+    temp = na.approx(Ad(get(markets[row,'code'], data.env)))
+    temp = periodReturn(temp,period=period)
+    temp = window(temp, start=start_date, end=end_date)
+    if (period == 'weekly') {
+      markets_week[[markets[row,'name']]] = temp
+    } else {
+      markets_month[[markets[row,'name']]] = temp
+    }
+  }
+}
+```
+
+```{r}
+
+gtest = function(market1, market2, minorder, maxorder){
+  causstr = ""
+  for (i in minorder:maxorder) {
+    caus = grangertest(market1, market2, order=i)
+    if (caus$`Pr(>F)`[2]<0.05) {
+      causstr = paste0(causstr,"1")
+    }
+    else{
+      causstr = paste0(causstr,"0")
+    }
+  }
+  return(causstr)
+}
+
+results = data.frame(market1=c(), market2=c(),caus=c())
+
+for (first_market in names(markets_week)){
+  for (second_market in names(markets_week)){
+    if (first_market!=second_market){
+
+      row = nrow(results)+1
+      results[row,'market1'] = first_market
+      results[row,'market2'] = second_market
+
+      caus = gtest(markets_week[[first_market]], markets_week[[second_market]],1,4)
+      results[row,'caus'] = caus 
+      }
+    }
+}
+
+```
+
+```{r}
+results
+```
+
+
+
