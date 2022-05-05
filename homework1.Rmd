@@ -15,6 +15,7 @@ library(xts)
 library(quantmod)
 library(TTR)
 library(lmtest)
+library(dygraphs)
 ```
 
 ```{r}
@@ -37,9 +38,38 @@ markets$name = markets_names
 markets$code = markets_codes
 ```
 
+```{r warning=FALSE}
+mex_market = xts()
+mex_market = na.approx(Ad(get('MXX', data.env)))
+mex_market = periodReturn(mex_market,period='daily', type='log')
+
+lambda = 0.94
+ratio = 1-lambda
+n = 1
+mex_ema = EMA(mex_market, n=n, ratio=ratio)
+
+mex_sd = sd(mex_market)
+ema_sd = sqrt(mean(mex_ema))
+
+print(mex_sd)
+print(ema_sd)
+```
+
 ```{r}
-markets_week = list()
-markets_month = list()
+mex_ema_plot = dygraph(data=mex_ema, main='Exponential Moving Average') %>%
+  dyRangeSelector() %>%
+  dyAxis('x', label = "Date") %>%
+  dyAxis('y', axisLabelFormatter='function(v){return (v).toFixed(4)}') %>%
+  dyOptions(axisLabelFontSize=10, fillGraph = FALSE, fillAlpha=0.1, drawPoints=FALSE)
+  
+mex_ema_plot
+```
+
+```{r, warning=FALSE}
+return_week = list()
+return_month = list()
+volat_week = list()
+volat_month = list()
 periods = c('weekly','monthly')
 
 start_date="2017-07-01"
@@ -49,53 +79,91 @@ for (period in periods) {
   for (row in 1:nrow(markets)) {
     temp = xts()
     temp = na.approx(Ad(get(markets[row,'code'], data.env)))
-    temp = periodReturn(temp,period=period)
+    temp = periodReturn(temp, period=period, type='log')
     temp = window(temp, start=start_date, end=end_date)
+    ema = EMA(temp, n=n, ratio=ratio)
+    
     if (period == 'weekly') {
-      markets_week[[markets[row,'name']]] = temp
+      return_week[[markets[row,'name']]] = temp
+      volat_week[[markets[row,'name']]] = ema
     } else {
-      markets_month[[markets[row,'name']]] = temp
+      return_month[[markets[row,'name']]] = temp
+      volat_month[[markets[row,'name']]] = ema
     }
   }
 }
 ```
 
-```{r}
-
+```{r, warning=FALSE}
 gtest = function(market1, market2, minorder, maxorder){
-  causstr = ""
+  test_result = ""
   for (i in minorder:maxorder) {
     caus = grangertest(market1, market2, order=i)
     if (caus$`Pr(>F)`[2]<0.05) {
-      causstr = paste0(causstr,"1")
+      test_result = paste0(test_result,"1")
     }
     else{
-      causstr = paste0(causstr,"0")
+      test_result = paste0(test_result,"0")
     }
   }
-  return(causstr)
+  return(test_result)
 }
 
-results = data.frame(market1=c(), market2=c(),caus=c())
+res_return_week = data.frame(matrix(nrow=11, ncol=11))
+colnames(res_return_week) = names(return_week)
+rownames(res_return_week) = names(return_week)
 
-for (first_market in names(markets_week)){
-  for (second_market in names(markets_week)){
+res_return_month = data.frame(matrix(nrow=11, ncol=11))
+colnames(res_return_month) = names(return_month)
+rownames(res_return_month) = names(return_month)
+
+res_volat_week = data.frame(matrix(nrow=11, ncol=11))
+colnames(res_volat_week) = names(return_week)
+rownames(res_volat_week) = names(return_week)
+
+res_volat_month = data.frame(matrix(nrow=11, ncol=11))
+colnames(res_volat_month) = names(return_month)
+rownames(res_volat_month) = names(return_month)
+
+for (first_market in names(return_week)){
+  for (second_market in names(return_week)){
     if (first_market!=second_market){
 
-      row = nrow(results)+1
-      results[row,'market1'] = first_market
-      results[row,'market2'] = second_market
+      row = nrow(res_return_week)+1
 
-      caus = gtest(markets_week[[first_market]], markets_week[[second_market]],1,4)
-      results[row,'caus'] = caus 
+      caus_week = gtest(return_week[[first_market]], return_week[[second_market]],1,4)
+      res_return_week[first_market,second_market] = caus_week
+      
+      caus_month = gtest(return_month[[first_market]], return_month[[second_market]],1,4)
+      res_return_month[first_market,second_market] = caus_month
+      
+      caus_week = gtest(volat_week[[first_market]], volat_week[[second_market]],1,4)
+      res_volat_week[first_market,second_market] = caus_week
+      
+      caus_month = gtest(volat_month[[first_market]], volat_month[[second_market]],1,4)
+      res_volat_month[first_market,second_market] = caus_month
+      
       }
     }
 }
-
 ```
 
 ```{r}
-results
+res_return_week
+```
+
+```{r}
+res_return_month
+```
+
+
+```{r}
+res_volat_week
+```
+
+
+```{r}
+res_volat_month
 ```
 
 
