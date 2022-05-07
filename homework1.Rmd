@@ -16,7 +16,26 @@ library(quantmod)
 library(TTR)
 library(lmtest)
 library(dygraphs)
+library(kernlab)
+library(ggplot2)
+library(glmnet)
 ```
+
+```{r}
+# Auxiliary functions
+ssr <-function(actual,pred){
+  sum((actual - pred)^2)
+}
+##Normalize Residual Mean Square Error (NRMSE) funct
+nrmse <- function(actual,pred){
+  sqrt(ssr(actual,pred)/((length(actual)-1)*var(actual)))
+} 
+##percentage of outperforming direct sample mean (sample expected value)
+pcorrect<- function(actual,pred){
+  (1-nrmse(actual,pred))*100
+}
+```
+
 
 ```{r}
 data.env = readRDS('.\\HW1\\WorldMarkts99_20.RDS')
@@ -166,5 +185,173 @@ res_volat_week
 res_volat_month
 ```
 
+```{r}
+sp500goyal = as.xts(read.zoo('.\\data\\GoyalMonthly2005.csv', sep=',', header=TRUE, format='%Y-%m-%d'))
+data=sp500goyal['1927/2005']
+colnames(data)
+```
 
+```{r}
+tau = 1 #data is monthly. Try tau=12 (year), tau=3 (quarterly)
+##1. Target and Feature as plain Price
+target = data$Index
+target = diff(log(data$Index), diff=tau)
+target = na.trim(target-mean(na.omit(target)))
+
+sp500ep = log(data$E12) - log(stats::lag(data$Index,1)) # ep
+sp500ep = diff(sp500ep, diff=tau)
+
+sp500dp = log(data$D12) - log(stats::lag(data$Index,1)) # dp
+sp500dp = diff(sp500dp, diff=tau)
+
+sp500dy = log(data$D12) - log(stats::lag(data$Index,1)) # dy
+sp500dy = diff(sp500dy, diff=tau)
+
+feat = merge(na.trim(stats::lag(target,1)),
+             na.trim(stats::lag(target,2)),
+             na.trim(stats::lag(target,3)),
+             sp500ep,
+             na.trim(stats::lag(sp500ep,1)),
+             na.trim(stats::lag(sp500ep,2)),
+             sp500dp,
+             na.trim(stats::lag(sp500dp,1)),
+             na.trim(stats::lag(sp500dp,2)),
+             sp500dy,
+             na.trim(stats::lag(sp500dy,1)),
+             na.trim(stats::lag(sp500dy,2)),
+             #add other features here,
+             all=FALSE)
+
+dataset = merge(feat,target,all=FALSE)
+
+colnames(dataset) = c("lag.1", "lag.2", "lag.3",
+                      "ep","ep.1","ep.2",
+                      "dp","dp.1","dp.2",
+                      "dy","dy.1","dy.2",
+                      #names of other features,
+                      "TARGET")
+
+```
+
+```{r}
+##Divide data into training (75%) and testing (25%). 
+T<-nrow(dataset)
+p=0.75
+T_trn <- round(p*T)
+trainindex <- 1:T_trn
+##process class sets as data frames
+train_data = as.data.frame(dataset[trainindex,])
+rownames(train_data) = NULL
+test_data = as.data.frame(dataset[-trainindex,])
+rownames(test_data) = NULL
+```
+
+```{r}
+head(dataset)
+```
+
+
+```{r}
+gpfit = gausspr(TARGET~., data=train_data,
+                type="regression",
+                kernel="rbfdot", 
+                var = 0.003
+)
+gpfit
+
+##build predictor (predict on test data)
+GPpredict <- predict(gpfit,test_data)
+
+```
+
+
+```{r}
+### Evaluation of Results
+actualTS = test_data[,ncol(test_data)] ##the true series to predict
+predicTS = GPpredict
+
+res <- list("GP"=pcorrect(actualTS,predicTS))
+unlist(res)
+
+train.error <- error(gpfit)  
+test.error <- mean((actualTS - predicTS)^2)
+gap <- test.error - train.error ; gap
+
+yl=c(min(actualTS,predicTS),max(actualTS,predicTS)) #set y limits
+plot(actualTS,predicTS,ylim=yl)
+
+plot(actualTS,t='l',col='gray20', ylab='', xlab ='',lty=3, main='GP predictions', cex.main=0.75)
+lines(GPpredict,col='green',lwd=2)
+legend('bottomright',legend = c('target','GP'),col=c('gray20','green'),lty=c(3,1),cex=.7)
+```
+
+```{r}
+x_vars = model.matrix(TARGET~. , dataset)[,-1]
+y_var = dataset$TARGET
+#lambda_seq = 10^seq(2, -2, by = -.1)
+
+cv_output = cv.glmnet(x_vars, 
+                      y_var,
+                      alpha = 1, 
+                      nfolds = 10)
+
+# identifying best lamda
+best_lam <- cv_output$lambda.min
+best_lam
+```
+
+```{r}
+plot(cv_output)
+head(x_vars)
+```
+
+
+```{r}
+# Rebuilding the model with best lamda value identified
+lasso_best <- glmnet(x_vars, y_var, alpha = 1, lambda = best_lam)
+
+coef(lasso_best)
+```
+```{r}
+gpfit = gausspr(TARGET~., data=select(train_data,lag.1,ep.2,TARGET),
+                type="regression",
+                kernel="rbfdot", 
+                #kernel= "rbfdot", #"vanilladot",
+                #kernel= ker1,  
+                #kpar = list(sigma = 0.4), #list of kernel hyper-parameters for rbf
+                ## if you make it constant value then does not make mle estimation of sigma
+                #kpar=list(scale=2,offset=2), ##for tanh
+                var = 0.003 # the initial noise variance: 0.001 default min value
+)
+gpfit
+
+##build predictor (predict on test data)
+GPpredict <- predict(gpfit,test_data)
+```
+
+```{r}
+### Evaluation of Results
+actualTS = test_data[,ncol(test_data)] ##the true series to predict
+predicTS = GPpredict
+
+res <- list("GP"=pcorrect(actualTS,predicTS))
+unlist(res)
+
+##Check the gap between training error (mse) and testing error
+train.error <- error(gpfit)  
+test.error <- mean((actualTS - predicTS)^2)
+gap <- test.error - train.error ; gap
+
+##For visual comparison
+
+yl=c(min(actualTS,predicTS),max(actualTS,predicTS)) #set y limits
+plot(actualTS,predicTS,ylim=yl)
+
+##Forecasting: PRICE, draw the simulations of price
+#par( mfrow = c( 1, 2 ) )
+#par(mar=c(2.5,2.5,2.5,2.5))
+plot(actualTS,t='l',col='gray20', ylab='', xlab ='',lty=3, main='GP predictions', cex.main=0.75)
+lines(GPpredict,col='green',lwd=2)
+legend('bottomright',legend = c('target','GP'),col=c('gray20','green'),lty=c(3,1),cex=.7)
+```
 

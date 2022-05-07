@@ -63,7 +63,8 @@ granger.test(Retp,h)
 
 ##run for all lags h=1,...,4 (use lapply)
 caus<- lapply(1:4,function(h){granger.test(Retp,h)})
-caus
+
+
 
 ##Tabulate results: row (Cause) --> column (effect), 
 ## each entry a 4-vector of {0,1} indicating causality (1) or not(0) for each lag
