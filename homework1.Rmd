@@ -2,8 +2,13 @@
 title: "homework1"
 author: "Ivan Aguilar"
 date: '2022-05-03'
-output: html_document
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: false
 ---
+# Initial setup
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -19,6 +24,8 @@ library(dygraphs)
 library(kernlab)
 library(ggplot2)
 library(glmnet)
+
+set.seed(666)
 ```
 
 ```{r}
@@ -26,16 +33,23 @@ library(glmnet)
 ssr <-function(actual,pred){
   sum((actual - pred)^2)
 }
+
 ##Normalize Residual Mean Square Error (NRMSE) funct
 nrmse <- function(actual,pred){
   sqrt(ssr(actual,pred)/((length(actual)-1)*var(actual)))
 } 
+
 ##percentage of outperforming direct sample mean (sample expected value)
 pcorrect<- function(actual,pred){
   (1-nrmse(actual,pred))*100
 }
 ```
 
+# Exercise 1
+
+![](images/Ex1.png)
+
+We read the time series data, extract the index names and codes and separate the market indexes from the volatility indexes.
 
 ```{r}
 data.env = readRDS('.\\HW1\\WorldMarkts99_20.RDS')
@@ -48,14 +62,14 @@ markets_names = names[1:11]
 volatilities_codes = ls(data.env)[12:13]
 volatilities_names = names[12:13]
 
-```
-
-```{r}
 markets = data.frame(matrix(ncol=2, nrow=11))
 colnames(markets) = c('name', 'code')
 markets$name = markets_names
 markets$code = markets_codes
+
 ```
+
+Next we choose the Mexico index (MXX) to compute the Exponential MOving Average for the the index time series with the indicated labmda and compare to moving window standard deviation
 
 ```{r warning=FALSE}
 mex_market = xts()
@@ -73,6 +87,9 @@ ema_sd = sqrt(mean(mex_ema))
 print(mex_sd)
 print(ema_sd)
 ```
+We can observe that bla bla bla
+
+We can also graph the values below and see the results
 
 ```{r}
 mex_ema_plot = dygraph(data=mex_ema, main='Exponential Moving Average') %>%
@@ -83,6 +100,22 @@ mex_ema_plot = dygraph(data=mex_ema, main='Exponential Moving Average') %>%
   
 mex_ema_plot
 ```
+
+# Exercise 3
+
+![](images/Ex3_1.png)
+![](images/Ex3_2.png)
+
+
+To complete this tasks we need to take the following actions:
+
+1. extract data for at daily level for  each of the 11 indexes into a time series and input an interpolated value (using na.approx function) where NAs exists in the data. As documentation indicates and this means that NA values in the time series are replaced by linear interpolation. 
+2. convert the indexes time series to weekly and monthly periods
+3. filter the data to contain only the windows assigned to the team (2017-07-01 - 2019-06-30)
+4. Calculate the exponential moving average for all indexes and periods
+
+The data for all indexes is stored in a list of dataframes, so we will end up with four type of dataframes combining the market indexes and volatility indexes (from EMA) with the weekly and monthly periods for each. 
+
 
 ```{r, warning=FALSE}
 return_week = list()
@@ -112,6 +145,8 @@ for (period in periods) {
   }
 }
 ```
+
+We can now run the causality test on all the different index combinations and produce the tables indicated int he exercise. 
 
 ```{r, warning=FALSE}
 gtest = function(market1, market2, minorder, maxorder){
@@ -185,15 +220,29 @@ res_volat_week
 res_volat_month
 ```
 
+The results indicate bla bla bla
+
+# Exercise 5
+
+![](images/Ex5_1.png)
+![](images/Ex5_2.png)
+
+First we read the data from the provided csv file and analyze the columns that it contains
+
 ```{r}
 sp500goyal = as.xts(read.zoo('.\\data\\GoyalMonthly2005.csv', sep=',', header=TRUE, format='%Y-%m-%d'))
 data=sp500goyal['1927/2005']
 colnames(data)
 ```
 
+Next we calculate the variables indicated for the team (ep, dp and dy) and calculate the lags for each of them, including the lags for the main index and we merge them all in the the time series dataframe. 
+
+Given that we are calculating lags we also trim out NAs generated on by those lags calculations.
+
+
 ```{r}
-tau = 1 #data is monthly. Try tau=12 (year), tau=3 (quarterly)
-##1. Target and Feature as plain Price
+tau = 1 
+
 target = data$Index
 target = diff(log(data$Index), diff=tau)
 target = na.trim(target-mean(na.omit(target)))
@@ -233,6 +282,8 @@ colnames(dataset) = c("lag.1", "lag.2", "lag.3",
 
 ```
 
+We split the data in training and testing datasets using a 75/25% proportion
+
 ```{r}
 ##Divide data into training (75%) and testing (25%). 
 T<-nrow(dataset)
@@ -246,10 +297,7 @@ test_data = as.data.frame(dataset[-trainindex,])
 rownames(test_data) = NULL
 ```
 
-```{r}
-head(dataset)
-```
-
+And we execute our gaussian process utilizing the Radial Basis Function kernel (rbfdot). We used the RBF because the kernel is very effective in predicting interpolations and short distance extrapolations, which are good for our exercise where we predict 1 period ahead. 
 
 ```{r}
 gpfit = gausspr(TARGET~., data=train_data,
@@ -259,7 +307,6 @@ gpfit = gausspr(TARGET~., data=train_data,
 )
 gpfit
 
-##build predictor (predict on test data)
 GPpredict <- predict(gpfit,test_data)
 
 ```
@@ -273,6 +320,9 @@ predicTS = GPpredict
 res <- list("GP"=pcorrect(actualTS,predicTS))
 unlist(res)
 
+mse = mean((actualTS - predicTS)^2)
+mse
+
 train.error <- error(gpfit)  
 test.error <- mean((actualTS - predicTS)^2)
 gap <- test.error - train.error ; gap
@@ -285,24 +335,26 @@ lines(GPpredict,col='green',lwd=2)
 legend('bottomright',legend = c('target','GP'),col=c('gray20','green'),lty=c(3,1),cex=.7)
 ```
 
+The results show that our NRMSE is at 45% and 
+
+In order to improve our gaussian process model that utilized all features, we will do some variable selection using lasso. We initially set our features and target to run them through our lasso model, where we will select our optimal lambda.
+
 ```{r}
 x_vars = model.matrix(TARGET~. , dataset)[,-1]
 y_var = dataset$TARGET
-#lambda_seq = 10^seq(2, -2, by = -.1)
 
 cv_output = cv.glmnet(x_vars, 
                       y_var,
                       alpha = 1, 
-                      nfolds = 10)
+                      nfolds = 50 )
 
-# identifying best lamda
+
 best_lam <- cv_output$lambda.min
 best_lam
 ```
 
 ```{r}
 plot(cv_output)
-head(x_vars)
 ```
 
 
@@ -313,7 +365,7 @@ lasso_best <- glmnet(x_vars, y_var, alpha = 1, lambda = best_lam)
 coef(lasso_best)
 ```
 ```{r}
-gpfit = gausspr(TARGET~., data=select(train_data,lag.1,ep.2,TARGET),
+gpfit = gausspr(TARGET~., data=select(train_data,lag.1,dp.2,dy.2,TARGET),
                 type="regression",
                 kernel="rbfdot", 
                 #kernel= "rbfdot", #"vanilladot",
@@ -337,10 +389,14 @@ predicTS = GPpredict
 res <- list("GP"=pcorrect(actualTS,predicTS))
 unlist(res)
 
+mse = mean((actualTS - predicTS)^2)
+mse
+
 ##Check the gap between training error (mse) and testing error
 train.error <- error(gpfit)  
 test.error <- mean((actualTS - predicTS)^2)
-gap <- test.error - train.error ; gap
+gap <- test.error - train.error ; 
+gap
 
 ##For visual comparison
 
