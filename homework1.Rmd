@@ -24,6 +24,7 @@ library(dygraphs)
 library(kernlab)
 library(ggplot2)
 library(glmnet)
+library(roll)
 
 set.seed(666)
 ```
@@ -69,7 +70,7 @@ markets$code = markets_codes
 
 ```
 
-Next we choose the Mexico index (MXX) to compute the Exponential MOving Average for the the index time series with the indicated labmda and compare to moving window standard deviation
+Next we choose the Mexico index (MXX) to compute the Exponential Moving Average for the the index time series with the indicated labmda and compare to moving standard deviation. 
 
 ```{r warning=FALSE}
 mex_market = xts()
@@ -79,24 +80,26 @@ mex_market = periodReturn(mex_market,period='daily', type='log')
 lambda = 0.94
 ratio = 1-lambda
 n = 1
-mex_ema = EMA(mex_market, n=n, ratio=ratio)
+mex_ema = sqrt(abs(EMA(mex_market, n=n, ratio=ratio)))
+mex_sd = roll_sd(mex_ema, width=30)
+mex_sma = SMA(mex_market, n=n, ratio=ratio) 
+colnames(mex_sd) = c('SD')
+colnames(mex_sma) = c('SMA')
 
-mex_sd = sd(mex_market)
-ema_sd = sqrt(mean(mex_ema))
-
-print(mex_sd)
-print(ema_sd)
+merged = merge(mex_sma, mex_ema, mex_sd, all=FALSE)
 ```
-We can observe that bla bla bla
+We merge together the extracted standard deviation from the Exponential Moving Average and the rolling standard deviation with a 30-day window to make them comparable.
 
-We can also graph the values below and see the results
+The graph shows that the SD from EMA oscillates a lot more given that it gives more importance to recent returns so it becomes more reactive.
+
+Also as a baseline we include a simple moving average calculation
 
 ```{r}
-mex_ema_plot = dygraph(data=mex_ema, main='Exponential Moving Average') %>%
+mex_ema_plot = dygraph(data=merged, main='SD (from EMA) vs SD') %>%
   dyRangeSelector() %>%
   dyAxis('x', label = "Date") %>%
   dyAxis('y', axisLabelFormatter='function(v){return (v).toFixed(4)}') %>%
-  dyOptions(axisLabelFontSize=10, fillGraph = FALSE, fillAlpha=0.1, drawPoints=FALSE)
+  dyOptions(axisLabelFontSize=10, fillGraph = FALSE, fillAlpha=0.5, drawPoints=FALSE)
   
 mex_ema_plot
 ```
@@ -290,7 +293,7 @@ T<-nrow(dataset)
 p=0.75
 T_trn <- round(p*T)
 trainindex <- 1:T_trn
-##process class sets as data frames
+
 train_data = as.data.frame(dataset[trainindex,])
 rownames(train_data) = NULL
 test_data = as.data.frame(dataset[-trainindex,])
@@ -314,7 +317,7 @@ GPpredict <- predict(gpfit,test_data)
 
 ```{r}
 ### Evaluation of Results
-actualTS = test_data[,ncol(test_data)] ##the true series to predict
+actualTS = test_data[,ncol(test_data)] 
 predicTS = GPpredict
 
 res <- list("GP"=pcorrect(actualTS,predicTS))
@@ -327,7 +330,7 @@ train.error <- error(gpfit)
 test.error <- mean((actualTS - predicTS)^2)
 gap <- test.error - train.error ; gap
 
-yl=c(min(actualTS,predicTS),max(actualTS,predicTS)) #set y limits
+yl=c(min(actualTS,predicTS),max(actualTS,predicTS)) 
 plot(actualTS,predicTS,ylim=yl)
 
 plot(actualTS,t='l',col='gray20', ylab='', xlab ='',lty=3, main='GP predictions', cex.main=0.75)
@@ -359,7 +362,6 @@ plot(cv_output)
 
 
 ```{r}
-# Rebuilding the model with best lamda value identified
 lasso_best <- glmnet(x_vars, y_var, alpha = 1, lambda = best_lam)
 
 coef(lasso_best)
@@ -368,22 +370,18 @@ coef(lasso_best)
 gpfit = gausspr(TARGET~., data=select(train_data,lag.1,dp.2,dy.2,TARGET),
                 type="regression",
                 kernel="rbfdot", 
-                #kernel= "rbfdot", #"vanilladot",
-                #kernel= ker1,  
-                #kpar = list(sigma = 0.4), #list of kernel hyper-parameters for rbf
-                ## if you make it constant value then does not make mle estimation of sigma
-                #kpar=list(scale=2,offset=2), ##for tanh
-                var = 0.003 # the initial noise variance: 0.001 default min value
+                kpar = list(sigma = 0.4), 
+                var = 0.003 
 )
 gpfit
 
-##build predictor (predict on test data)
+
 GPpredict <- predict(gpfit,test_data)
 ```
 
 ```{r}
 ### Evaluation of Results
-actualTS = test_data[,ncol(test_data)] ##the true series to predict
+actualTS = test_data[,ncol(test_data)]
 predicTS = GPpredict
 
 res <- list("GP"=pcorrect(actualTS,predicTS))
@@ -392,20 +390,14 @@ unlist(res)
 mse = mean((actualTS - predicTS)^2)
 mse
 
-##Check the gap between training error (mse) and testing error
 train.error <- error(gpfit)  
 test.error <- mean((actualTS - predicTS)^2)
 gap <- test.error - train.error ; 
 gap
 
-##For visual comparison
-
-yl=c(min(actualTS,predicTS),max(actualTS,predicTS)) #set y limits
+yl=c(min(actualTS,predicTS),max(actualTS,predicTS))
 plot(actualTS,predicTS,ylim=yl)
 
-##Forecasting: PRICE, draw the simulations of price
-#par( mfrow = c( 1, 2 ) )
-#par(mar=c(2.5,2.5,2.5,2.5))
 plot(actualTS,t='l',col='gray20', ylab='', xlab ='',lty=3, main='GP predictions', cex.main=0.75)
 lines(GPpredict,col='green',lwd=2)
 legend('bottomright',legend = c('target','GP'),col=c('gray20','green'),lty=c(3,1),cex=.7)
