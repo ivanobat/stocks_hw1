@@ -53,9 +53,15 @@ pcorrect<- function(actual,pred){
 
 ![](images/EX1.PNG)
 
-We read the time series data, extract the index names and codes and separate the market indexes from the volatility indexes.
+## Solution Theory
+![](images/EXT1.PNG)
 
-```{r}
+## Solution Code
+First we read the time series data, extract the index names and codes and separate the market indexes from the volatility indexes (which we will not be using)
+
+Next we choose the Mexico index (MXX) to compute the Exponential Moving Average for the the index time series with the indicated labmda and compare to moving standard deviation.
+
+```{r, warning=FALSE}
 data.env = readRDS('.\\HW1\\WorldMarkts99_20.RDS')
 
 names<-c("India", "Brazil","UK","Germany","USA","China-Shanghai",
@@ -71,11 +77,6 @@ colnames(markets) = c('name', 'code')
 markets$name = markets_names
 markets$code = markets_codes
 
-```
-
-Next we choose the Mexico index (MXX) to compute the Exponential Moving Average for the the index time series with the indicated labmda and compare to moving standard deviation. 
-
-```{r warning=FALSE}
 start_date = '2017-07-01'
 end_date = '2019-06-30'
 
@@ -108,9 +109,7 @@ mex_idx_plot
 ```
 
 We merge together the extracted Exponential Moving Average (of the squared returns) and the rolling standard deviation with a 30-day window to make them comparable.
-
-The data shows that when EMA oscillates the standard deviation increases and it follows this pattern closely, however the standard deviation takes longer to respond to changes. 
-
+ 
 ```{r}
 mex_ema_plot = dygraph(data=merged, main='EMA vs SD') %>%
   dyRangeSelector() %>%
@@ -121,11 +120,20 @@ mex_ema_plot = dygraph(data=merged, main='EMA vs SD') %>%
 mex_ema_plot
 ```
 
-# Exercise 3 - Causality
+The data shows that EMA and the standard deviation move in a similar pattern, although the variation is more pronounced in EMA and also the standard deviation takes longer to respond to trend changes.
 
+
+# Exercise 2
+![](images/EX2.jpeg)
+
+## Solution Theory
+![](images/EXT2.PNG)
+
+# Exercise 3 - Causality
 ![](images/Ex3_1.png)
 ![](images/Ex3_2.png)
 
+## Solution Code
 
 To complete this task we will be taking the following actions:
 
@@ -252,7 +260,7 @@ res_volat_month %>%
   kbl() %>%
   kable_classic(full_width = F, html_font = "Cambria")
 ```
-## Conclusions
+### Conclusions
 
 We can pick a couple of examples from the causality results on returns and volatility using granger test.
 
@@ -264,9 +272,9 @@ While talking about volatility Brazil weekly volatility with lags 3 and 4 helps 
 In general very few instances on this time period detect a significant causality for both returns and volatility
 
 # Exercise 4 - Kernels
-
 ![](images/EX5_1.PNG)
 
+## Solution Code
 ```{r}
 
 # generate covariance matrix for points in `x` using given kernel function
@@ -359,10 +367,10 @@ par(mfrow = c(1, 3))
 In both kernels SE an RQ, as we increase the parameter lambda (length) the functions plotted become significantly flatter and lose variance altogether. For the alpha parameter in the RQ kernel case, increasing the alpha parameter causes the fucntion to be smoother and only reduces variance locally but doesn't fully flatten the plot. 
 
 # Exercise 5 - Gaussian Process
-
+## Solution Code
 ![](images/EX5_1.PNG)
 ![](images/Ex5_2.png)
-## Reading data
+### Reading data
 
 First we read the data from the provided csv file and analyze the columns that it contains
 
@@ -371,12 +379,11 @@ sp500goyal = as.xts(read.zoo('.\\data\\GoyalMonthly2005.csv', sep=',', header=TR
 data=sp500goyal['1927/2005']
 colnames(data)
 ```
-## Feature creation
+### Feature creation
 
 Next we calculate the variables indicated for the team (ep, dp and dy) and calculate the lags for each of them, including the lags for the main index and we merge them all in the the time series dataframe. 
 
 Given that we are calculating lags we also trim out NAs generated on by those lags calculations.
-
 
 ```{r}
 tau = 1 
@@ -419,7 +426,7 @@ colnames(dataset) = c("lag.1", "lag.2", "lag.3",
                       "TARGET")
 
 ```
-## Train/Test splitting
+### Train/Test splitting
 
 We split the data in training and testing datasets using a 75/25% proportion
 
@@ -436,9 +443,9 @@ test_data = as.data.frame(dataset[-trainindex,])
 rownames(test_data) = NULL
 ```
 
-## Run gaussian process (all features)
+### Gaussian process (all features)
 
-### Run model
+#### Run model
 
 And we execute our gaussian process utilizing the Radial Basis Function kernel (rbfdot). We used the RBF because the kernel is very effective in predicting interpolations and short distance extrapolations, which are good for our exercise where we predict 1 period ahead. 
 
@@ -454,7 +461,7 @@ gpfit
 GPpredict <- predict(gpfit,test_data)
 
 ```
-### Evaluate results
+#### Evaluate results
 
 ```{r}
 ### Evaluation of Results
@@ -471,7 +478,7 @@ gap <- test.error - train.error ;
 #gap
 print(paste0('MSE diff (test-train): ', gap))
 ```
-### Plot results
+#### Plot results
 
 ```{r}
 yl=c(min(actualTS,predicTS),max(actualTS,predicTS)) 
@@ -484,15 +491,11 @@ lines(GPpredict,col='green',lwd=2)
 legend('bottomright',legend = c('target','GP'),col=c('gray20','green'),lty=c(3,1),cex=.7)
 ```
 
-### Conclusions
-
-The results show that our NRMSE is still a bit low and in the graph we can appreciate that the predicted values have an excessive variance in some cases that exaggerate the predicted value.  
-
-## Variable selection with Lasso
+### Variable selection with Lasso
 
 In order to improve our gaussian process model that utilized all features, we will do some variable selection using lasso. We initially set our features and target to run them through our lasso model, where we will select our optimal lambda.
 
-### Select lambda
+#### Select lambda
 
 ```{r}
 x_vars = model.matrix(TARGET~. , dataset)[,-1]
@@ -514,7 +517,7 @@ We can plot the lambdas explored and how the minimal version got selected from t
 plot(cv_output)
 ```
 
-### Selected variables
+#### Selected variables
 
 And finally we can have a look at the variables selected by Lasso using our best lambda
 
@@ -524,7 +527,7 @@ lasso_best <- glmnet(x_vars, y_var, alpha = 1, lambda = best_lam)
 coef(lasso_best)
 ```
 
-### Run model
+#### Run model
 
 If we refit our model only using the features suggested by lasso and output the results so we can see if our prediction improves.
 
@@ -542,7 +545,7 @@ gpfit
 GPpredict <- predict(gpfit, dplyr::select(test_data,lag.1,dp.2,TARGET))
 ```
 
-### Evaluate results
+#### Evaluate results
 
 ```{r}
 ### Evaluation of Results
@@ -560,7 +563,7 @@ gap <- test.error - train.error ;
 print(paste0('MSE diff (test-train): ', gap))
 ```
 
-### Plot results
+#### Plot results
 
 ```{r}
 yl=c(min(actualTS,predicTS),max(actualTS,predicTS))
@@ -575,4 +578,12 @@ legend('bottomright',legend = c('target','GP'),col=c('gray20','green'),lty=c(3,1
 
 ### Conclusions
 
-We can see that using only the significant features according to lasso reduces the variance of the prediction and show a notable reduction on the MSE, which means that lasso effectively helps on producing a more accurate prediction on returns in general terms, but it also makes the model extremely conservative and has very little variance on returns, hence the almost flat line around zero when comparing actual vs predicted target.
+For the gaussian process using all features the results show that our predicition is still limited and in the graph we can appreciate that the predicted values have an excessive variance in some cases that exaggerate the predicted result. 
+
+We can observe that using only the significant features selected by lasso reduces the variance of the prediction and show a notable reduction on the MSE, which means that lasso effectively helps on producing a more accurate prediction on returns in general terms, but it also makes the model extremely conservative and has very little variance on returns, hence the almost flat line around zero when comparing actual vs predicted target.
+
+# Exercise 6
+![](images/EX6.jpeg)
+
+## Solution Theory
+![](images/EXT6.PNG)
