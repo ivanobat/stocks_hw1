@@ -1,14 +1,14 @@
 ---
-title: "homework1"
-author: "Ivan Aguilar"
-date: '2022-05-03'
+title: "Task 1. ML for Finance"
+author: "Ivan Aguilar, Juan Picciotti"
+date: '2022-05-10'
 output: 
   html_document:
     toc: true
     toc_depth: 3
     number_sections: false
+    code_folding: "hide"
 ---
-# Initial setup
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -25,12 +25,15 @@ library(kernlab)
 library(ggplot2)
 library(glmnet)
 library(roll)
+library(MASS)
+library(kableExtra)
 
 set.seed(666)
 ```
 
-```{r}
+```{r, }
 # Auxiliary functions
+# sum of squares
 ssr <-function(actual,pred){
   sum((actual - pred)^2)
 }
@@ -46,9 +49,9 @@ pcorrect<- function(actual,pred){
 }
 ```
 
-# Exercise 1
+# Exercise 1 - EMA and SD
 
-![](images/Ex1.png)
+![](images/EX1.PNG)
 
 We read the time series data, extract the index names and codes and separate the market indexes from the volatility indexes.
 
@@ -73,29 +76,43 @@ markets$code = markets_codes
 Next we choose the Mexico index (MXX) to compute the Exponential Moving Average for the the index time series with the indicated labmda and compare to moving standard deviation. 
 
 ```{r warning=FALSE}
+start_date = '2017-07-01'
+end_date = '2019-06-30'
+
 mex_market = xts()
-mex_market = na.approx(Ad(get('MXX', data.env)))
-mex_market = periodReturn(mex_market,period='daily', type='log')
+mex_market = xts()
+mex_market_idx = na.approx(Ad(get('MXX', data.env)))
+mex_market_idx = window(mex_market_idx, start=start_date, end=end_date)
+mex_market = periodReturn(mex_market_idx,period='daily', type='log')
 
-lambda = 0.94
-ratio = 1-lambda
+ 
+
+lambda = 0.50
+ratio = lambda
 n = 1
-mex_ema = sqrt(abs(EMA(mex_market, n=n, ratio=ratio)))
-mex_sd = roll_sd(mex_ema, width=30)
-mex_sma = SMA(mex_market, n=n, ratio=ratio) 
+mex_ema = sqrt(EMA(mex_market^2, n=n, ratio=ratio))
+mex_sd = roll_sd(mex_market, width=30)
+
 colnames(mex_sd) = c('SD')
-colnames(mex_sma) = c('SMA')
 
-merged = merge(mex_sma, mex_ema, mex_sd, all=FALSE)
+merged = merge(mex_ema, mex_sd, all=FALSE)
+
+mex_idx_plot = dygraph(data=mex_market_idx, main='MXX index') %>%
+  dyRangeSelector() %>%
+  dyAxis('x', label = "Date") %>%
+  dyAxis('y', axisLabelFormatter='function(v){return (v).toFixed(4)}') %>%
+  dyOptions(axisLabelFontSize=10, fillGraph = FALSE, fillAlpha=0.5, drawPoints=FALSE)
+  
+mex_idx_plot
+
 ```
-We merge together the extracted standard deviation from the Exponential Moving Average and the rolling standard deviation with a 30-day window to make them comparable.
 
-The graph shows that the SD from EMA oscillates a lot more given that it gives more importance to recent returns so it becomes more reactive.
+We merge together the extracted Exponential Moving Average (of the squared returns) and the rolling standard deviation with a 30-day window to make them comparable.
 
-Also as a baseline we include a simple moving average calculation
+The data shows that when EMA oscillates the standard deviation increases and it follows this pattern closely, however the standard deviation takes longer to respond to changes. 
 
 ```{r}
-mex_ema_plot = dygraph(data=merged, main='SD (from EMA) vs SD') %>%
+mex_ema_plot = dygraph(data=merged, main='EMA vs SD') %>%
   dyRangeSelector() %>%
   dyAxis('x', label = "Date") %>%
   dyAxis('y', axisLabelFormatter='function(v){return (v).toFixed(4)}') %>%
@@ -104,13 +121,13 @@ mex_ema_plot = dygraph(data=merged, main='SD (from EMA) vs SD') %>%
 mex_ema_plot
 ```
 
-# Exercise 3
+# Exercise 3 - Causality
 
 ![](images/Ex3_1.png)
 ![](images/Ex3_2.png)
 
 
-To complete this tasks we need to take the following actions:
+To complete this task we will be taking the following actions:
 
 1. extract data for at daily level for  each of the 11 indexes into a time series and input an interpolated value (using na.approx function) where NAs exists in the data. As documentation indicates and this means that NA values in the time series are replaced by linear interpolation. 
 2. convert the indexes time series to weekly and monthly periods
@@ -136,7 +153,7 @@ for (period in periods) {
     temp = na.approx(Ad(get(markets[row,'code'], data.env)))
     temp = periodReturn(temp, period=period, type='log')
     temp = window(temp, start=start_date, end=end_date)
-    ema = EMA(temp, n=n, ratio=ratio)
+    ema = EMA(temp^2, n=n, ratio=ratio)
     
     if (period == 'weekly') {
       return_week[[markets[row,'name']]] = temp
@@ -149,7 +166,7 @@ for (period in periods) {
 }
 ```
 
-We can now run the causality test on all the different index combinations and produce the tables indicated int he exercise. 
+We can now run the causality test on all the different index combinations and produce the tables indicated in the exercise. 
 
 ```{r, warning=FALSE}
 gtest = function(market1, market2, minorder, maxorder){
@@ -205,30 +222,147 @@ for (first_market in names(return_week)){
 }
 ```
 
-```{r}
-res_return_week
-```
+### Weekly returns
 
 ```{r}
-res_return_month
+res_return_week %>% 
+  kbl() %>%
+  kable_classic(full_width = F, html_font = "Cambria")
 ```
-
+### Monthly returns
 
 ```{r}
-res_volat_week
+res_return_month %>% 
+  kbl() %>%
+  kable_classic(full_width = F, html_font = "Cambria")
 ```
 
+### Weekly volatility
 
 ```{r}
-res_volat_month
+res_volat_week %>% 
+  kbl() %>%
+  kable_classic(full_width = F, html_font = "Cambria")
 ```
 
-The results indicate bla bla bla
+### Monthly volatility
 
-# Exercise 5
+```{r}
+res_volat_month %>% 
+  kbl() %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+## Conclusions
 
-![](images/Ex5_1.png)
+We can pick a couple of examples from the causality results on returns and volatility using granger test.
+
+For example on the weekly returns data it is found that Mexico's index data is statistically significant to be useful to predict USA index with all lags. This might seem like a surprising finding but that could be probably explained by the fact that Mexico's index is following closely the USA one and might be replicating its behavior. However at monthly level that effect is lost, so the predicting power is very limited.
+
+
+While talking about volatility Brazil weekly volatility with lags 3 and 4 helps explaining Mexico volatility as shown by the granger test results.
+
+In general very few instances on this time period detect a significant causality for both returns and volatility
+
+# Exercise 4 - Kernels
+
+![](images/EX5_1.PNG)
+
+```{r}
+
+# generate covariance matrix for points in `x` using given kernel function
+cov_matrix <- function(x, kernel_fn, ...) {
+    outer(x, x, function(a, b) kernel_fn(a, b, ...))
+}
+
+# given x coordinates, take N draws from kernel function at those points
+draw_samples <- function(x, N, seed = 1, kernel_fn, ...) {
+    Y <- matrix(NA, nrow = length(x), ncol = N)
+    set.seed(seed)
+    for (n in 1:N) {
+        K <- cov_matrix(x, kernel_fn, ...)
+        Y[, n] <- mvrnorm(1, mu = rep(0, times = length(x)), Sigma = K)
+    }
+    Y
+}
+
+x = seq(0, 2, length.out = 201)
+N = 5
+col_list = c("red", "blue", "black", "green", "yellow") 
+
+# set parameters
+lambda_se = c(0.1, 1, 10)
+sigma_se = 1
+
+lambda_rq = c(0.1, 1, 10)
+sigma_rq = 1
+alpha_rq = c(0.1, 0.5, 50)
+
+```
+
+We will plot below the SE kernel with variations on the lambda parameter (length) and then the RQ kernel, first increasing the lambda parameter and afterwards with variation on the alpha parameter, that way we will be able to detect the effect of each of those parameter on each kernel.
+
+### Squared Exponential kernel
+#### Length variation
+
+```{r fig.width=10,fig.height=3}
+se_kernel = function(x, y, sigma = sigma_se, length = 1) {
+    sigma^2 * exp(- (x - y)^2 / (2 * length^2))
+}
+par(mfrow = c(1, 3))
+for (l in lambda_se) {
+    Y = draw_samples(x, N, kernel_fn = se_kernel, length = l)
+    
+    plot(range(x), range(Y), xlab = "x", ylab = "y", type = "n",
+         main = paste("SE kernel, length =", l))
+    for (n in 1:N) {
+        lines(x, Y[, n], col = col_list[n], lwd = 1.5)
+    }
+}
+```
+
+### Rational Quadratic kernel
+#### Length variation
+
+```{r fig.width=10,fig.height=3}
+rq_kernel = function(x, y, alpha = 1, sigma = 1, length = 1) {
+    sigma^2 * (1 + (x - y)^2 / (2 * alpha * length^2))^(-alpha)
+}
+par(mfrow = c(1, 3))
+  for (l in lambda_rq) {
+    Y = draw_samples(x, N, kernel_fn = rq_kernel, length = l, alpha = 0.1)
+    
+    plot(range(x), range(Y), xlab = "x", ylab = "y", type = "n",
+         main = paste("RQ kernel, length=", l, " alpha=",0.1))
+    for (n in 1:N) {
+        lines(x, Y[, n], col = col_list[n], lwd = 1.5)
+    }
+  }
+```
+
+#### Alpha variation
+
+```{r fig.width=10,fig.height=3}
+par(mfrow = c(1, 3))
+  for (a in alpha_rq) {
+    Y = draw_samples(x, N, kernel_fn = rq_kernel, length = 0.1, alpha = a)
+    
+    plot(range(x), range(Y), xlab = "x", ylab = "y", type = "n",
+         main = paste("RQ kernel, length=", 0.1, " alpha=",a))
+    for (n in 1:N) {
+        lines(x, Y[, n], col = col_list[n], lwd = 1.5)
+    }
+  }
+```
+
+### Conclusions
+
+In both kernels SE an RQ, as we increase the parameter lambda (length) the functions plotted become significantly flatter and lose variance altogether. For the alpha parameter in the RQ kernel case, increasing the alpha parameter causes the fucntion to be smoother and only reduces variance locally but doesn't fully flatten the plot. 
+
+# Exercise 5 - Gaussian Process
+
+![](images/EX5_1.PNG)
 ![](images/Ex5_2.png)
+## Reading data
 
 First we read the data from the provided csv file and analyze the columns that it contains
 
@@ -237,6 +371,7 @@ sp500goyal = as.xts(read.zoo('.\\data\\GoyalMonthly2005.csv', sep=',', header=TR
 data=sp500goyal['1927/2005']
 colnames(data)
 ```
+## Feature creation
 
 Next we calculate the variables indicated for the team (ep, dp and dy) and calculate the lags for each of them, including the lags for the main index and we merge them all in the the time series dataframe. 
 
@@ -284,6 +419,7 @@ colnames(dataset) = c("lag.1", "lag.2", "lag.3",
                       "TARGET")
 
 ```
+## Train/Test splitting
 
 We split the data in training and testing datasets using a 75/25% proportion
 
@@ -300,12 +436,17 @@ test_data = as.data.frame(dataset[-trainindex,])
 rownames(test_data) = NULL
 ```
 
+## Run gaussian process (all features)
+
+### Run model
+
 And we execute our gaussian process utilizing the Radial Basis Function kernel (rbfdot). We used the RBF because the kernel is very effective in predicting interpolations and short distance extrapolations, which are good for our exercise where we predict 1 period ahead. 
 
 ```{r}
 gpfit = gausspr(TARGET~., data=train_data,
                 type="regression",
-                kernel="rbfdot", 
+                kernel="rbfdot",
+                kpar = list(sigma = 0.1), 
                 var = 0.003
 )
 gpfit
@@ -313,7 +454,7 @@ gpfit
 GPpredict <- predict(gpfit,test_data)
 
 ```
-
+### Evaluate results
 
 ```{r}
 ### Evaluation of Results
@@ -321,26 +462,37 @@ actualTS = test_data[,ncol(test_data)]
 predicTS = GPpredict
 
 res <- list("GP"=pcorrect(actualTS,predicTS))
-unlist(res)
-
-mse = mean((actualTS - predicTS)^2)
-mse
+#unlist(res)
+print(paste0('NRMSE: ',unlist(res)))
 
 train.error <- error(gpfit)  
 test.error <- mean((actualTS - predicTS)^2)
-gap <- test.error - train.error ; gap
+gap <- test.error - train.error ; 
+#gap
+print(paste0('MSE diff (test-train): ', gap))
+```
+### Plot results
 
+```{r}
 yl=c(min(actualTS,predicTS),max(actualTS,predicTS)) 
 plot(actualTS,predicTS,ylim=yl)
+```
 
+```{r}
 plot(actualTS,t='l',col='gray20', ylab='', xlab ='',lty=3, main='GP predictions', cex.main=0.75)
 lines(GPpredict,col='green',lwd=2)
 legend('bottomright',legend = c('target','GP'),col=c('gray20','green'),lty=c(3,1),cex=.7)
 ```
 
-The results show that our NRMSE is at 45% and 
+### Conclusions
+
+The results show that our NRMSE is still a bit low and in the graph we can appreciate that the predicted values have an excessive variance in some cases that exaggerate the predicted value.  
+
+## Variable selection with Lasso
 
 In order to improve our gaussian process model that utilized all features, we will do some variable selection using lasso. We initially set our features and target to run them through our lasso model, where we will select our optimal lambda.
+
+### Select lambda
 
 ```{r}
 x_vars = model.matrix(TARGET~. , dataset)[,-1]
@@ -349,35 +501,48 @@ y_var = dataset$TARGET
 cv_output = cv.glmnet(x_vars, 
                       y_var,
                       alpha = 1, 
-                      nfolds = 50 )
+                      nfolds = 100 )
 
 
 best_lam <- cv_output$lambda.min
 best_lam
 ```
 
+We can plot the lambdas explored and how the minimal version got selected from the lasso cross-validation.
+
 ```{r}
 plot(cv_output)
 ```
 
+### Selected variables
+
+And finally we can have a look at the variables selected by Lasso using our best lambda
 
 ```{r}
 lasso_best <- glmnet(x_vars, y_var, alpha = 1, lambda = best_lam)
 
 coef(lasso_best)
 ```
+
+### Run model
+
+If we refit our model only using the features suggested by lasso and output the results so we can see if our prediction improves.
+
+
 ```{r}
-gpfit = gausspr(TARGET~., data=select(train_data,lag.1,dp.2,dy.2,TARGET),
+gpfit = gausspr(TARGET~., data=dplyr::select(train_data,lag.1,dp.2,TARGET),
                 type="regression",
                 kernel="rbfdot", 
-                kpar = list(sigma = 0.4), 
-                var = 0.003 
+                kpar = list(sigma = 0.1), 
+                var = 0.003
 )
 gpfit
 
 
-GPpredict <- predict(gpfit,test_data)
+GPpredict <- predict(gpfit, dplyr::select(test_data,lag.1,dp.2,TARGET))
 ```
+
+### Evaluate results
 
 ```{r}
 ### Evaluation of Results
@@ -385,21 +550,29 @@ actualTS = test_data[,ncol(test_data)]
 predicTS = GPpredict
 
 res <- list("GP"=pcorrect(actualTS,predicTS))
-unlist(res)
-
-mse = mean((actualTS - predicTS)^2)
-mse
+#unlist(res)
+print(paste0('NRMSE: ',unlist(res)))
 
 train.error <- error(gpfit)  
 test.error <- mean((actualTS - predicTS)^2)
 gap <- test.error - train.error ; 
-gap
+#gap
+print(paste0('MSE diff (test-train): ', gap))
+```
 
+### Plot results
+
+```{r}
 yl=c(min(actualTS,predicTS),max(actualTS,predicTS))
 plot(actualTS,predicTS,ylim=yl)
+```
 
+```{r}
 plot(actualTS,t='l',col='gray20', ylab='', xlab ='',lty=3, main='GP predictions', cex.main=0.75)
 lines(GPpredict,col='green',lwd=2)
 legend('bottomright',legend = c('target','GP'),col=c('gray20','green'),lty=c(3,1),cex=.7)
 ```
 
+### Conclusions
+
+We can see that using only the significant features according to lasso reduces the variance of the prediction and show a notable reduction on the MSE, which means that lasso effectively helps on producing a more accurate prediction on returns in general terms, but it also makes the model extremely conservative and has very little variance on returns, hence the almost flat line around zero when comparing actual vs predicted target.
